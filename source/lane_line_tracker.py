@@ -70,9 +70,9 @@ class LaneLineTracker(object):
         l = np.average(np.array([line.camera_distance() for line in self.left_lines[-8:]]))
         r = np.average(np.array([line.camera_distance() for line in self.right_lines[-8:]]))
         if l - r > 0:
-            self.draw_text(frame, '{:.3} cm left of center'.format((l - r) * 100), 20, 115)
+            self.draw_text(frame, '{:.3} cm right of center'.format((l - r) * 100), 20, 115)
         else:
-            self.draw_text(frame, '{:.3} cm right of center'.format((r - l) * 100), 20, 115)
+            self.draw_text(frame, '{:.3} cm left of center'.format((r - l) * 100), 20, 115)
 
         self.curvatures.append(np.mean([left_line.curvature_radius(), right_line.curvature_radius()]))
         curvature = np.average(self.curvatures[-8:])
