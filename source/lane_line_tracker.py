@@ -17,11 +17,16 @@ class LaneLineTracker(object):
         self.calibration = calibration
         self.left_lines = []
         self.right_lines = []
+        self.curvatures = []
+        self.distances_from_center = []
         self.input_video_clip = VideoFileClip(video_path)
         self.output_video_clip = self.input_video_clip.fl(self.process_frame)
 
     def process_video(self):
         self.output_video_clip.write_videofile(self.output_path, audio=False)
+
+    def draw_text(self, frame, text, x, y):
+        cv2.putText(frame, text, (x, y), cv2.FONT_HERSHEY_SIMPLEX, .8, (255, 255, 255), 2)
 
     def process_frame(self, gf, t):
         image = gf(t)
@@ -33,6 +38,9 @@ class LaneLineTracker(object):
         left_line = LaneLine(warped, left_window_points)
         right_line = LaneLine(warped, right_window_points)
 
+        self.left_lines.append(left_line)
+        self.right_lines.append(right_line)
+
         left_line.fit()
         right_line.fit()
 
@@ -41,46 +49,33 @@ class LaneLineTracker(object):
         original_birds_eye = warp_birds_eye(undistorted, self.source_points, self.destination_points)
         filtered_birds_eye = warp_birds_eye(filtered, self.source_points, self.destination_points)
 
-        y = np.linspace(0, 719, num=720)
+        y = left_line.generate_y()
 
-        left_x = left_line.evaluate(y)
+        lane_drawing = np.zeros_like(original_birds_eye)
+        left_x = np.median(np.array([ l.evaluate() for l in self.left_lines[-8:] ]), axis=0)
         left_points = np.vstack([left_x, y]).T
-        cv2.polylines(windows, np.int32([left_points]), False, (255, 255, 255), 3)
 
-        right_x = right_line.evaluate(y)
+        right_x = np.median(np.array([ l.evaluate() for l in self.right_lines[-8:] ]), axis=0)
         right_points = np.vstack([right_x, y]).T
-        cv2.polylines(windows, np.int32([right_points]), False, (255, 255, 255), 3)
 
+        all_points = np.concatenate([left_points, right_points[::-1], left_points[:1]])
 
+        cv2.fillConvexPoly(lane_drawing, np.int32([all_points]), (0, 255, 0))
+
+        unwarped_lane_drawing = warp_birds_eye(lane_drawing, self.source_points, self.destination_points, reverse=True)
         original_perspective_windows = warp_birds_eye(windows, self.source_points, self.destination_points, reverse=True)
 
+        frame = cv2.addWeighted(undistorted, 1.0, unwarped_lane_drawing, 0.2, 0)
 
+        l = np.average(np.array([line.camera_distance() for line in self.left_lines[-8:]]))
+        r = np.average(np.array([line.camera_distance() for line in self.right_lines[-8:]]))
+        if l - r > 0:
+            self.draw_text(frame, '{:.3} cm left of center'.format((l - r) * 100), 20, 115)
+        else:
+            self.draw_text(frame, '{:.3} cm right of center'.format((r - l) * 100), 20, 115)
 
-        return self.merge_images(
-            image,
-            original_perspective_windows,
-            filtered_birds_eye,
-            filtered
-        )
+        self.curvatures.append(np.mean([left_line.curvature_radius(), right_line.curvature_radius()]))
+        curvature = np.average(self.curvatures[-8:])
+        self.draw_text(frame, 'Radius of curvature:  {:.3} km'.format(curvature / 1000), 20, 80)
 
-    def merge_images(self, np_image1, np_image2, np_image3, np_image4):
-        image1 = Image.fromarray(np.uint8(np_image1))
-        image2 = Image.fromarray(np.uint8(np_image2))
-        image3 = Image.fromarray(np.uint8(np_image3))
-        image4 = Image.fromarray(np.uint8(np_image4))
-
-        (width1, height1) = image1.size
-        (width2, height2) = image2.size
-        (width3, height3) = image3.size
-        (width4, height4) = image4.size
-
-        result_width = width1 + width2
-        result_height = height1 + height3
-
-        result = Image.new('RGB', (result_width, result_height))
-        result.paste(im=image1, box=(0, 0))
-        result.paste(im=image2, box=(width1, 0))
-        result.paste(im=image3, box=(0, height1))
-        result.paste(im=image4, box=(width1, height1))
-
-        return np.array(result)
+        return frame
