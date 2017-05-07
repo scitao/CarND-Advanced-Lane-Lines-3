@@ -100,7 +100,6 @@ def warp_birds_eye(image, source_points, destination_points, reverse=False):
     else:
         return shift_perspective(image, source_points, destination_points)
 
-
 def corners_unwarp(img, nx, ny, mtx, dist):
     '''
     Undistort and shift perspective of camera calibration images.

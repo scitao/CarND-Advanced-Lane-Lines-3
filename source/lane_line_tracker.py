@@ -18,7 +18,6 @@ class LaneLineTracker(object):
         self.left_lines = []
         self.right_lines = []
         self.curvatures = []
-        self.distances_from_center = []
         self.input_video_clip = VideoFileClip(video_path)
         self.output_video_clip = self.input_video_clip.fl(self.process_frame)
 
