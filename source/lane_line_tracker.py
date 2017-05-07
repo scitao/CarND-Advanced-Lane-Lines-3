@@ -18,8 +18,9 @@ class LaneLineTracker(object):
         self.left_lines = []
         self.right_lines = []
         self.curvatures = []
-        self.input_video_clip = VideoFileClip(video_path)
-        self.output_video_clip = self.input_video_clip.fl(self.process_frame)
+        if video_path is not None:
+            self.input_video_clip = VideoFileClip(video_path)
+            self.output_video_clip = self.input_video_clip.fl(self.process_frame)
 
     def process_video(self):
         self.output_video_clip.write_videofile(self.output_path, audio=False)
@@ -29,7 +30,9 @@ class LaneLineTracker(object):
 
     def process_frame(self, gf, t):
         image = gf(t)
+        return self.process_image(image)
 
+    def process_image(self, image):
         undistorted = cv2.undistort(image, self.calibration.camera_matrix, self.calibration.distortion_coefficients, None)
         filtered = get_edge_mask(undistorted)
         warped = warp_birds_eye(filtered, self.source_points, self.destination_points)
