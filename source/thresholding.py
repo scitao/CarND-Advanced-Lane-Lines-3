@@ -96,11 +96,7 @@ def get_edge_mask(
     if return_all_channels is True:
         return color_binary
 
-    mask = np.zeros_like(color_binary)
-    mask[
-        (color_binary[:,:,0] > 0) |
-        (color_binary[:,:,1] > 0) |
-        (color_binary[:,:,2] > 0)
-    ] = 1
+    mask = np.zeros_like(b_binary)
+    mask[(l_binary >= 1) | (gradient_mask >= 1) | (b_binary >= 1)] = 1
 
-    return mask[:,:,0][:,:,None]
+    return mask[:,:,None]

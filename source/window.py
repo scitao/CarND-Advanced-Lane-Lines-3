@@ -1,8 +1,31 @@
 import cv2
 import numpy as np
 
-def find_window_centroids(warped, window_width, window_height, margin):
+WINDOW_WIDTH = 100
+WINDOW_HEIGHT = 80
+MARGIN = 50
+
+def draw_windows(image, window_centroids, window_width=WINDOW_WIDTH, window_height=WINDOW_HEIGHT, margin=MARGIN):
+    image = cv2.cvtColor(image.astype(np.uint16), cv2.COLOR_GRAY2RGB)
+    h = image.shape[0]
+    w = image.shape[1]
+    for level, window in enumerate(window_centroids):
+        for side in [0, 1]:
+            y_min = int(h - (level + 1) * window_height) 
+            y_max = int(h - level * window_height)
+            x_min = max(0, int(window[side] - window_width / 2))
+            x_max = min(int(window[side] + window_width / 2), w)
+            cv2.rectangle(
+                image, 
+                (x_min, y_min), 
+                (x_max, y_max), 
+                color=(0, 1, 0), thickness=4
+            )
+    return image
+
+def find_window_centroids(warped, window_width=WINDOW_WIDTH, window_height=WINDOW_HEIGHT, margin=MARGIN):
     window_centroids = [] # Store the (left,right) window centroid positions per level
+    conv_signals = [] # Store the (left,right) window centroid positions per level
     window = np.ones(window_width) # Create our window template that we will use for convolutions
 
     # First find the two starting positions for the left and right lane by using np.sum to get the vertical image slice
@@ -10,12 +33,18 @@ def find_window_centroids(warped, window_width, window_height, margin):
     
     # Sum quarter bottom of image to get slice, could use a different ratio
     l_sum = np.sum(warped[int(3*warped.shape[0]/4):,:int(warped.shape[1]/2)], axis=0)
-    l_center = np.argmax(np.convolve(window,l_sum))-window_width/2
+    l_conv_signal = np.convolve(window, l_sum)
+    l_center = np.argmax(l_conv_signal) - window_width/2
     r_sum = np.sum(warped[int(3*warped.shape[0]/4):,int(warped.shape[1]/2):], axis=0)
-    r_center = np.argmax(np.convolve(window,r_sum))-window_width/2+int(warped.shape[1]/2)
+    r_conv_signal = np.convolve(window, r_sum)
+    r_center = np.argmax(r_conv_signal) - window_width / 2 + int(warped.shape[1] / 2)
 
     # Add what we found for the first layer
     window_centroids.append((l_center,r_center))
+    conv_signals.append((
+        np.max(l_conv_signal),
+        np.max(r_conv_signal),
+    ))
 
     # Go through each layer looking for max pixel locations
     for level in range(1,(int)(warped.shape[0]/window_height)):
@@ -28,26 +57,38 @@ def find_window_centroids(warped, window_width, window_height, margin):
         l_min_index = int(max(l_center+offset-margin,0))
         l_max_index = int(min(l_center+offset+margin,warped.shape[1]))
         l_center = np.argmax(conv_signal[l_min_index:l_max_index])+l_min_index-offset
+        l_max = np.max(conv_signal[l_min_index:l_max_index])
         # Find the best right centroid by using past right center as a reference
         r_min_index = int(max(r_center+offset-margin,0))
         r_max_index = int(min(r_center+offset+margin,warped.shape[1]))
         r_center = np.argmax(conv_signal[r_min_index:r_max_index])+r_min_index-offset
+        r_max = np.max(conv_signal[r_min_index:r_max_index])
         # Add what we found for that layer
+        conv_signals.append((l_max, r_max))
+        
+        if conv_signals[-1][0] < 0.5 * conv_signals[-2][0]:
+            l_center = l_min_index
+        if conv_signals[-1][1] < 0.5 * conv_signals[-2][1]:
+            r_center = r_min_index
+
         window_centroids.append((l_center,r_center))
 
     return window_centroids
 
-def sliding_window(image):
+def sliding_window(image, window_width=WINDOW_WIDTH, window_height=WINDOW_HEIGHT, margin=MARGIN):
 
-    def window_mask(width, height, img_ref, center,level):
+    def window_mask(window_width, window_height, img_ref, center,level):
         output = np.zeros_like(img_ref)
-        output[int(img_ref.shape[0]-(level+1)*height):int(img_ref.shape[0]-level*height),max(0,int(center-width/2)):min(int(center+width/2),img_ref.shape[1])] = 1
+        h = img_ref.shape[0]
+        w = img_ref.shape[1]
+        y_min = int(h - (level + 1) * window_height) 
+        y_max = int(h - level * window_height)
+        x_min = max(0, int(center - window_width / 2))
+        x_max = min(int(center + window_width / 2), w)
+        output[y_min:y_max, x_min:x_max] = 1
         return output
 
     warped = np.copy(image)
-    window_width = 50 
-    window_height = 80 # Break image into 9 vertical layers since image height is 720
-    margin = 100 # How much to slide left and right for searching
 
     window_centroids = find_window_centroids(warped, window_width, window_height, margin)
 
